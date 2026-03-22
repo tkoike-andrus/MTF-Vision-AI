@@ -26,6 +26,13 @@ export async function GET(request: NextRequest) {
       .limit(20),
   ]);
 
+  if (configRes.error) {
+    console.error("[bot/config GET] config error:", configRes.error.message, configRes.error.code);
+  }
+  if (stateRes.error) {
+    console.error("[bot/config GET] state error:", stateRes.error.message, stateRes.error.code);
+  }
+
   return NextResponse.json({
     config: configRes.data,
     state: stateRes.data,

@@ -379,6 +379,7 @@ export default function AutoTradePage() {
         fetch(`/api/strategies?user_id=${userId}`).then((r) => r.json()),
       ]);
 
+      console.log("[LoadConfig] API response:", { hasConfig: !!configRes.config, hasState: !!configRes.state, ordersCount: configRes.recentOrders?.length });
       if (configRes.config) {
         // DB values take priority — only fill missing fields from DEFAULT_CONFIG
         const loaded = { ...DEFAULT_CONFIG, ...configRes.config };
