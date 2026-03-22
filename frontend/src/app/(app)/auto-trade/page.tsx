@@ -375,8 +375,8 @@ export default function AutoTradePage() {
     if (authLoading || !userId) return;
     async function load() {
       const [configRes, strategiesRes] = await Promise.all([
-        fetch(`/api/bot/config?user_id=${userId}`).then((r) => r.json()),
-        fetch(`/api/strategies?user_id=${userId}`).then((r) => r.json()),
+        fetch(`/api/bot/config?user_id=${userId}`, { cache: "no-store" }).then((r) => r.json()),
+        fetch(`/api/strategies?user_id=${userId}`, { cache: "no-store" }).then((r) => r.json()),
       ]);
 
       console.log("[LoadConfig] API response:", { hasConfig: !!configRes.config, hasState: !!configRes.state, ordersCount: configRes.recentOrders?.length });

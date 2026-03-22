@@ -89,12 +89,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      images,
-      errors: images.length > 0 ? [] : errors,
-      source: images.length > 0 && errors.length === 0 ? "storage" : "local",
-      chart_count: images.length,
-    });
+    return NextResponse.json(
+      {
+        images,
+        errors: images.length > 0 ? [] : errors,
+        source: images.length > 0 && errors.length === 0 ? "storage" : "local",
+        chart_count: images.length,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          "Pragma": "no-cache",
+        },
+      }
+    );
   } catch (err) {
     console.error("Chart images read error:", err);
     return NextResponse.json(

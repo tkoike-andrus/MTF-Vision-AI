@@ -33,11 +33,19 @@ export async function GET(request: NextRequest) {
     console.error("[bot/config GET] state error:", stateRes.error.message, stateRes.error.code);
   }
 
-  return NextResponse.json({
-    config: configRes.data,
-    state: stateRes.data,
-    recentOrders: ordersRes.data || [],
-  });
+  return NextResponse.json(
+    {
+      config: configRes.data,
+      state: stateRes.data,
+      recentOrders: ordersRes.data || [],
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+      },
+    }
+  );
 }
 
 export async function PUT(request: NextRequest) {

@@ -36,7 +36,15 @@ export async function GET(request: NextRequest) {
     return s;
   });
 
-  return NextResponse.json({ strategies });
+  return NextResponse.json(
+    { strategies },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+      },
+    }
+  );
 }
 
 export async function POST(request: NextRequest) {

@@ -38,8 +38,16 @@ export async function GET(request: NextRequest) {
     discipline_score: t.discipline_score != null ? Number(t.discipline_score) : null,
   }));
 
-  return NextResponse.json({
-    profile: profileRes.data,
-    trades,
-  });
+  return NextResponse.json(
+    {
+      profile: profileRes.data,
+      trades,
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+      },
+    }
+  );
 }
