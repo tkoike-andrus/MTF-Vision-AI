@@ -27,6 +27,10 @@ export function createServerSupabaseClient() {
           }
         },
       },
+      global: {
+        fetch: (url: string | URL | Request, init?: RequestInit) =>
+          fetch(url, { ...init, cache: "no-store" }),
+      },
     }
   );
 }
@@ -40,6 +44,10 @@ export function createServiceRoleClient() {
         get() { return undefined; },
         set() {},
         remove() {},
+      },
+      global: {
+        fetch: (url: string | URL | Request, init?: RequestInit) =>
+          fetch(url, { ...init, cache: "no-store" }),
       },
     }
   );
