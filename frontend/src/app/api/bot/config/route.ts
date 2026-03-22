@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 /**
  * GET /api/bot/config?user_id=xxx — Load bot config & state
@@ -38,11 +40,14 @@ export async function GET(request: NextRequest) {
       config: configRes.data,
       state: stateRes.data,
       recentOrders: ordersRes.data || [],
+      _server_time: new Date().toISOString(),
     },
     {
       headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0",
         "Pragma": "no-cache",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
       },
     }
   );

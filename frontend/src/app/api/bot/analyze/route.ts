@@ -23,6 +23,8 @@ import { readFile, stat } from "fs/promises";
 import { join } from "path";
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 const MTF_CHART_FILES = ["m5.png", "h1.png", "h4.png", "d1.png"];
 const MTF_TIMEFRAMES = ["5分足", "1時間足", "4時間足", "日足"];

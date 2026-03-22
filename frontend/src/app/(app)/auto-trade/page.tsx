@@ -379,7 +379,7 @@ export default function AutoTradePage() {
         fetch(`/api/strategies?user_id=${userId}`, { cache: "no-store" }).then((r) => r.json()),
       ]);
 
-      console.log("[LoadConfig] API response:", { hasConfig: !!configRes.config, hasState: !!configRes.state, ordersCount: configRes.recentOrders?.length });
+      console.log("[LoadConfig] API response:", { hasConfig: !!configRes.config, hasState: !!configRes.state, ordersCount: configRes.recentOrders?.length, serverTime: configRes._server_time });
       if (configRes.config) {
         console.log("[LoadConfig] DB values:", {
           symbol: configRes.config.symbol,

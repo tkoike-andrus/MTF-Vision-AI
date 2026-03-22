@@ -8,6 +8,8 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { Trade } from "@/lib/types/database";
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 export async function POST(request: NextRequest) {
   try {

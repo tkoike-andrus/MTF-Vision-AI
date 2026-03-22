@@ -3,6 +3,8 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { STRATEGY_TEMPLATES } from "@/lib/strategies";
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 /**
  * GET /api/strategies?user_id=xxx — List all strategies (built-in + custom)
