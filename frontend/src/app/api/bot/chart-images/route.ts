@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { readFile, stat } from "fs/promises";
-import { join } from "path";
 
 export const dynamic = 'force-dynamic';
 
+const BUCKET_NAME = "chart-images";
 const CHART_FILES = [
   { file: "m5.png", label: "5分足" },
   { file: "h1.png", label: "1時間足" },
@@ -14,8 +13,8 @@ const CHART_FILES = [
 
 /**
  * GET /api/bot/chart-images?user_id=xxx
- * Reads chart images from the user's configured local folder.
- * Returns base64-encoded images array.
+ * Reads chart images from Supabase Storage (cloud)
+ * Falls back to local file system if storage fails (localhost dev)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -25,45 +24,75 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createServiceRoleClient();
-    const { data: config } = await supabase
-      .from("bot_configs")
-      .select("chart_image_folder")
-      .eq("user_id", userId)
-      .single();
-
-    if (!config?.chart_image_folder) {
-      return NextResponse.json({
-        error: "chart_image_folder not configured",
-        images: [],
-      }, { status: 400 });
-    }
-
-    const folder = config.chart_image_folder;
     const images: { file: string; label: string; base64: string; modified_at: string }[] = [];
     const errors: string[] = [];
 
+    // Try Supabase Storage first
     for (const { file, label } of CHART_FILES) {
-      const filePath = join(folder, file);
+      const storagePath = `charts/${file}`;
       try {
-        const [fileBuffer, fileStat] = await Promise.all([
-          readFile(filePath),
-          stat(filePath),
-        ]);
+        const { data, error } = await supabase.storage
+          .from(BUCKET_NAME)
+          .download(storagePath);
+
+        if (error || !data) {
+          errors.push(`${file}: not found in storage`);
+          continue;
+        }
+
+        const buffer = Buffer.from(await data.arrayBuffer());
         images.push({
           file,
           label,
-          base64: fileBuffer.toString("base64"),
-          modified_at: fileStat.mtime.toISOString(),
+          base64: buffer.toString("base64"),
+          modified_at: new Date().toISOString(),
         });
       } catch {
-        errors.push(`${file}: not found`);
+        errors.push(`${file}: storage error`);
+      }
+    }
+
+    // Fallback to local filesystem (for localhost development)
+    if (images.length === 0) {
+      try {
+        const { readFile, stat } = await import("fs/promises");
+        const { join } = await import("path");
+
+        const { data: config } = await supabase
+          .from("bot_configs")
+          .select("chart_image_folder")
+          .eq("user_id", userId)
+          .single();
+
+        if (config?.chart_image_folder) {
+          const folder = config.chart_image_folder;
+          for (const { file, label } of CHART_FILES) {
+            const filePath = join(folder, file);
+            try {
+              const [fileBuffer, fileStat] = await Promise.all([
+                readFile(filePath),
+                stat(filePath),
+              ]);
+              images.push({
+                file,
+                label,
+                base64: fileBuffer.toString("base64"),
+                modified_at: fileStat.mtime.toISOString(),
+              });
+            } catch {
+              // Already in errors from storage attempt
+            }
+          }
+        }
+      } catch {
+        // fs not available (Vercel) — skip local fallback
       }
     }
 
     return NextResponse.json({
       images,
-      errors,
-      folder,
+      errors: images.length > 0 ? [] : errors,
+      source: images.length > 0 && errors.length === 0 ? "storage" : "local",
       chart_count: images.length,
     });
   } catch (err) {
