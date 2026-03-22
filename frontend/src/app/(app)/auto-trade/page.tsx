@@ -627,11 +627,10 @@ export default function AutoTradePage() {
     setTimeout(() => setOrderCopied(false), 2000);
   }, [orders, dbOrders, orderSearchMode]);
 
-  // Start bot
+  // Start bot — only update is_active, never overwrite other settings
   const startBot = useCallback(async () => {
     if (config.is_active) return;
-    const newConfig = { ...config, is_active: true };
-    setConfig(newConfig);
+    setConfig({ ...config, is_active: true });
     addLocalLog("SYSTEM", "SUCCESS",
       `Bot起動: ${config.symbol.replace("_", "/")} / ${config.strategy_name} / ${config.analysis_interval_min}分間隔`
     );
@@ -639,21 +638,20 @@ export default function AutoTradePage() {
     await fetch("/api/bot/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId, ...newConfig }),
+      body: JSON.stringify({ user_id: userId, is_active: true }),
     });
   }, [userId, config, addLocalLog]);
 
-  // Stop bot
+  // Stop bot — only update is_active, never overwrite other settings
   const stopBot = useCallback(async () => {
     if (!config.is_active) return;
-    const newConfig = { ...config, is_active: false };
-    setConfig(newConfig);
+    setConfig({ ...config, is_active: false });
     addLocalLog("SYSTEM", "WARN", "Bot停止");
     if (!userId) return;
     await fetch("/api/bot/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId, ...newConfig }),
+      body: JSON.stringify({ user_id: userId, is_active: false }),
     });
   }, [userId, config, addLocalLog]);
 
@@ -791,15 +789,14 @@ export default function AutoTradePage() {
           }
           scheduleNext();
         } else {
-          // Trading hours ended → auto-stop bot
+          // Trading hours ended → auto-stop bot (only update is_active)
           addLocalLog("SYSTEM", "WARN", `取引終了時間（${config.trade_end_hour > 24 ? `翌${config.trade_end_hour - 24}` : config.trade_end_hour}:00 JST）に到達したためBotを自動停止しました`);
-          const stoppedConfig = { ...config, is_active: false };
-          setConfig(stoppedConfig);
+          setConfig({ ...config, is_active: false });
           if (userId) {
             fetch("/api/bot/config", {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ user_id: userId, ...stoppedConfig }),
+              body: JSON.stringify({ user_id: userId, is_active: false }),
             });
           }
         }
@@ -1709,7 +1706,7 @@ export default function AutoTradePage() {
                               await fetch("/api/bot/config", {
                                 method: "PUT",
                                 headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ user_id: userId, ...config, strategy_name: s.name }),
+                                body: JSON.stringify({ user_id: userId, strategy_name: s.name }),
                               });
                             }
                           }}
