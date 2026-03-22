@@ -392,20 +392,30 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // ── Vercel (スマホ): Supabase Storageから取得 ──
+      // chart_uploaderがJPEG圧縮時は .jpg、未圧縮時は .png で保存するため両方試行
       await log("CHART", "INFO", "Supabase Storageからチャート画像を取得中...");
       for (let i = 0; i < MTF_CHART_FILES.length; i++) {
-        const storagePath = `charts/${MTF_CHART_FILES[i]}`;
-        try {
-          const { data, error } = await supabase.storage
-            .from(CHART_BUCKET)
-            .download(storagePath);
-          if (!error && data) {
-            const buffer = Buffer.from(await data.arrayBuffer());
-            chartImages.push(buffer.toString("base64"));
-            chartTimeframes.push(MTF_TIMEFRAMES[i]);
+        const baseName = MTF_CHART_FILES[i].replace(".png", "");
+        let found = false;
+        for (const ext of [".jpg", ".png"]) {
+          const storagePath = `charts/${baseName}${ext}`;
+          try {
+            const { data, error } = await supabase.storage
+              .from(CHART_BUCKET)
+              .download(storagePath);
+            if (!error && data) {
+              const buffer = Buffer.from(await data.arrayBuffer());
+              chartImages.push(buffer.toString("base64"));
+              chartTimeframes.push(MTF_TIMEFRAMES[i]);
+              found = true;
+              break;
+            }
+          } catch {
+            // try next extension
           }
-        } catch {
-          await log("CHART", "WARN", `${MTF_TIMEFRAMES[i]} (${MTF_CHART_FILES[i]}) をStorageから取得できません`);
+        }
+        if (!found) {
+          await log("CHART", "WARN", `${MTF_TIMEFRAMES[i]} (${baseName}) をStorageから取得できません`);
         }
       }
       if (chartImages.length > 0) {

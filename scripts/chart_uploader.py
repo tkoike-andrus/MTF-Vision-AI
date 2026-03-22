@@ -16,6 +16,7 @@ import os
 import sys
 import time
 import hashlib
+import io
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -26,6 +27,13 @@ except ImportError:
     print("  pip install supabase")
     sys.exit(1)
 
+try:
+    from PIL import Image
+except ImportError:
+    print("[WARN] Pillow 未インストール — 画像リサイズなしでアップロードします")
+    print("  pip install Pillow  で圧縮転送が有効になります")
+    Image = None  # type: ignore
+
 # ============================================================
 # 設定（チューニング可能）
 # ============================================================
@@ -34,6 +42,10 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 BUCKET_NAME = "chart-images"
 CHART_FILES = ["m5.png", "h1.png", "h4.png", "d1.png"]
+
+# ── 画像リサイズ設定 ──
+RESIZE_MAX_PX = 1024           # 長辺の最大ピクセル数（0=リサイズ無効）
+JPEG_QUALITY = 80              # JPEG圧縮品質（1-100）
 
 # ── タイミング設定 ──
 CANDLE_INTERVAL_MIN = 5    # 足の間隔（分）: 5 = M5足
@@ -68,6 +80,48 @@ def is_changed(path: str, filename: str) -> bool:
     return False
 
 # ============================================================
+# 画像リサイズ＋JPEG圧縮
+# ============================================================
+def compress_image(filepath: str) -> tuple[bytes, str]:
+    """
+    画像をリサイズ＋JPEG圧縮して返す。
+    Returns: (image_bytes, content_type)
+    Pillowがなければ元PNGをそのまま返す。
+    """
+    with open(filepath, "rb") as f:
+        raw = f.read()
+
+    if Image is None or RESIZE_MAX_PX <= 0:
+        return raw, "image/png"
+
+    img = Image.open(io.BytesIO(raw))
+    orig_w, orig_h = img.size
+
+    # 長辺がRESIZE_MAX_PX以下ならリサイズ不要
+    if max(orig_w, orig_h) > RESIZE_MAX_PX:
+        ratio = RESIZE_MAX_PX / max(orig_w, orig_h)
+        new_w = int(orig_w * ratio)
+        new_h = int(orig_h * ratio)
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+
+    # RGBA→RGB変換（JPEG保存用）
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+    compressed = buf.getvalue()
+
+    orig_kb = len(raw) / 1024
+    comp_kb = len(compressed) / 1024
+    reduction = (1 - len(compressed) / len(raw)) * 100 if raw else 0
+    print(f"    圧縮: {orig_w}x{orig_h} → {img.size[0]}x{img.size[1]} | "
+          f"{orig_kb:.0f}KB → {comp_kb:.0f}KB ({reduction:.0f}%削減)")
+
+    return compressed, "image/jpeg"
+
+
+# ============================================================
 # Supabase Storageアップロード
 # ============================================================
 def upload_charts(client) -> int:
@@ -78,20 +132,22 @@ def upload_charts(client) -> int:
             continue
 
         try:
-            with open(filepath, "rb") as f:
-                data = f.read()
+            data, content_type = compress_image(filepath)
 
-            storage_path = f"charts/{filename}"
+            # 圧縮時は拡張子を .jpg に変更
+            upload_name = filename.replace(".png", ".jpg") if content_type == "image/jpeg" else filename
+            storage_path = f"charts/{upload_name}"
+
             client.storage.from_(BUCKET_NAME).upload(
                 path=storage_path,
                 file=data,
                 file_options={
-                    "content-type": "image/png",
+                    "content-type": content_type,
                     "upsert": "true",
                 },
             )
             size_kb = len(data) / 1024
-            print(f"  [UPLOAD] {filename} ({size_kb:.0f}KB)")
+            print(f"  [UPLOAD] {filename} → {upload_name} ({size_kb:.0f}KB)")
             uploaded += 1
 
         except Exception as e:
@@ -101,9 +157,9 @@ def upload_charts(client) -> int:
                     client.storage.from_(BUCKET_NAME).update(
                         path=storage_path,
                         file=data,
-                        file_options={"content-type": "image/png"},
+                        file_options={"content-type": content_type},
                     )
-                    print(f"  [UPDATE] {filename}")
+                    print(f"  [UPDATE] {filename} → {upload_name}")
                     uploaded += 1
                 except Exception as e2:
                     print(f"  [ERROR] {filename}: {e2}")
