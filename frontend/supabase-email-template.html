@@ -1,0 +1,150 @@
+<!--
+  Supabase Email Template for AATM
+
+  Subject:Autonomous AI Trading Managerへようこそ — メールアドレスを確認してください
+
+  Set this in: Supabase Dashboard → Authentication → Email Templates → Confirm signup
+
+  Variables available:
+    {{ .ConfirmationURL }} - The confirmation link
+    {{ .Email }} - User's email
+    {{ .SiteURL }} - Your site URL
+-->
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
+  <tr>
+    <td align="center" style="padding: 40px 20px;">
+      <table width="480" cellpadding="0" cellspacing="0" style="max-width: 480px; width: 100%;">
+
+        <!-- Logo -->
+        <tr>
+          <td align="center" style="padding-bottom: 32px;">
+            <div style="width: 48px; height: 48px; background-color: #2563eb; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; line-height: 48px; text-align: center;">
+              <span style="color: #ffffff; font-size: 22px; font-weight: 800;">A</span>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Heading -->
+        <tr>
+          <td align="center" style="padding-bottom: 8px;">
+            <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #111827; letter-spacing: -0.02em;">
+              メールアドレスを確認
+            </h1>
+          </td>
+        </tr>
+
+        <!-- Subtext -->
+        <tr>
+          <td align="center" style="padding-bottom: 32px;">
+            <p style="margin: 0; font-size: 14px; color: #6b7280; line-height: 1.6;">
+              AATMへの登録ありがとうございます。<br>
+              以下のボタンをクリックしてアカウントを有効化してください。
+            </p>
+          </td>
+        </tr>
+
+        <!-- CTA Button -->
+        <tr>
+          <td align="center" style="padding-bottom: 32px;">
+            <a href="{{ .ConfirmationURL }}"
+               style="display: inline-block; padding: 14px 32px; background-color: #2563eb; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; border-radius: 12px; letter-spacing: 0.01em; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);">
+              アカウントを確認する
+            </a>
+          </td>
+        </tr>
+
+        <!-- Divider -->
+        <tr>
+          <td style="padding-bottom: 24px;">
+            <div style="height: 1px; background-color: #f3f4f6;"></div>
+          </td>
+        </tr>
+
+        <!-- Features Preview -->
+        <tr>
+          <td style="padding-bottom: 24px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding: 8px 0;">
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="width: 32px; height: 32px; background-color: #eff6ff; border-radius: 8px; text-align: center; vertical-align: middle;">
+                        <span style="font-size: 14px;">📊</span>
+                      </td>
+                      <td style="padding-left: 12px;">
+                        <p style="margin: 0; font-size: 13px; font-weight: 600; color: #111827;">統計ダッシュボード</p>
+                        <p style="margin: 2px 0 0; font-size: 11px; color: #9ca3af;">KPI・勝率・損益を一目で把握</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0;">
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="width: 32px; height: 32px; background-color: #ecfdf5; border-radius: 8px; text-align: center; vertical-align: middle;">
+                        <span style="font-size: 14px;">🧠</span>
+                      </td>
+                      <td style="padding-left: 12px;">
+                        <p style="margin: 0; font-size: 13px; font-weight: 600; color: #111827;">AI診断</p>
+                        <p style="margin: 2px 0 0; font-size: 11px; color: #9ca3af;">負け癖・勝ちパターンをAIが分析</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0;">
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="width: 32px; height: 32px; background-color: #faf5ff; border-radius: 8px; text-align: center; vertical-align: middle;">
+                        <span style="font-size: 14px;">📈</span>
+                      </td>
+                      <td style="padding-left: 12px;">
+                        <p style="margin: 0; font-size: 13px; font-weight: 600; color: #111827;">MTFチャート分析</p>
+                        <p style="margin: 2px 0 0; font-size: 11px; color: #9ca3af;">マルチタイムフレームでエントリーを可視化</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Divider -->
+        <tr>
+          <td style="padding-bottom: 24px;">
+            <div style="height: 1px; background-color: #f3f4f6;"></div>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td align="center" style="padding-bottom: 8px;">
+            <p style="margin: 0; font-size: 11px; color: #d1d5db; line-height: 1.6;">
+              ボタンが機能しない場合は、以下のURLをブラウザに貼り付けてください：
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding-bottom: 24px;">
+            <p style="margin: 0; font-size: 10px; color: #d1d5db; word-break: break-all;">
+              {{ .ConfirmationURL }}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td align="center">
+            <p style="margin: 0; font-size: 11px; color: #d1d5db;">
+              © AATM — Autonomous AI Trading Manager
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>

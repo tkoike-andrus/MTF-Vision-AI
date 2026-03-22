@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+
+# env files (NEVER commit secrets)
+.env
+.env.local
+.env*.local
+backend/.env
+
+# next.js
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# misc
+*.pem
+*.log
+.vercel
+*.csv
+.claude/
