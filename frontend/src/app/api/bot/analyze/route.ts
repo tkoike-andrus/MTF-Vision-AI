@@ -19,8 +19,6 @@ import {
 import { postTradeToX } from "@/lib/notifications/x-post";
 import { generateTweetText, isBigTrade, type TradeInfo, type TweetMode } from "@/lib/ai/tweet-generator";
 import type { GmoPosition } from "@/lib/gmo/types";
-import { readFile, stat } from "fs/promises";
-import { join } from "path";
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -368,6 +366,8 @@ export async function POST(request: NextRequest) {
       await log("CHART", "SUCCESS", "アップロードされたチャート画像を使用");
     } else if (!isVercel && config.chart_image_folder) {
       // ── PC: ローカルファイルシステムから直接読み込み ──
+      const { readFile, stat } = await import("fs/promises");
+      const { join } = await import("path");
       await log("CHART", "INFO", `ローカルフォルダをスキャン中: ${config.chart_image_folder}`);
       for (let i = 0; i < MTF_CHART_FILES.length; i++) {
         const filePath = join(config.chart_image_folder, MTF_CHART_FILES[i]);
