@@ -717,7 +717,7 @@ export default function AutoTradePage() {
           }
         } else if (data.error) {
           // DB側でis_active=falseになっている場合（外部デバイスから停止された）
-          if (data.error === "Bot is not active") {
+          if (typeof data.error === "string" && data.error.includes("not active")) {
             addLocalLog("SYSTEM", "WARN", "別のデバイスからBotが停止されました。ローカルも停止します。");
             setConfig((prev) => ({ ...prev, is_active: false }));
           } else {
