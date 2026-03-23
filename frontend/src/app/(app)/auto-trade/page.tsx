@@ -309,6 +309,7 @@ export default function AutoTradePage() {
   const [state, setState] = useState<BotState | null>(null);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [orders, setOrders] = useState<AutoTradeOrder[]>([]);
+  const [monthlyPnl, setMonthlyPnl] = useState(0);
   const [orderDateFrom, setOrderDateFrom] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - d.getDay() + 1);
     return d.toISOString().split("T")[0];
@@ -399,6 +400,7 @@ export default function AutoTradePage() {
       }
       if (configRes.state) setState(configRes.state);
       if (configRes.recentOrders) setOrders(configRes.recentOrders);
+      if (configRes.monthlyPnl !== undefined) setMonthlyPnl(configRes.monthlyPnl);
       if (strategiesRes.strategies) setStrategies(strategiesRes.strategies);
 
       fetch(`/api/bot/chart-images?user_id=${userId}`)
@@ -423,6 +425,7 @@ export default function AutoTradePage() {
       const data = await res.json();
       if (data.state) setState(data.state);
       if (data.recentOrders) setOrders(data.recentOrders);
+      if (data.monthlyPnl !== undefined) setMonthlyPnl(data.monthlyPnl);
     }, 30000);
     return () => clearInterval(interval);
   }, [config.is_active, userId]);
@@ -1208,6 +1211,15 @@ export default function AutoTradePage() {
                 (state?.daily_pnl || 0) >= 0 ? "text-emerald-400" : "text-red-400"
               }`}>
                 {(state?.daily_pnl || 0) >= 0 ? "+" : ""}¥{(state?.daily_pnl || 0).toLocaleString()}
+              </p>
+            </div>
+
+            <div className={card + " p-3"}>
+              <p className={label}>当月損益</p>
+              <p className={`text-lg font-bold font-mono mt-1 ${
+                monthlyPnl >= 0 ? "text-emerald-400" : "text-red-400"
+              }`}>
+                {monthlyPnl >= 0 ? "+" : ""}¥{monthlyPnl.toLocaleString()}
               </p>
             </div>
           </div>

@@ -17,7 +17,11 @@ export async function GET(request: NextRequest) {
 
   const supabase = createServiceRoleClient();
 
-  const [configRes, stateRes, ordersRes] = await Promise.all([
+  // 当月1日(JST)を算出
+  const jstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const monthStart = `${jstNow.getUTCFullYear()}-${String(jstNow.getUTCMonth() + 1).padStart(2, "0")}-01T00:00:00+09:00`;
+
+  const [configRes, stateRes, ordersRes, monthlyOrdersRes] = await Promise.all([
     supabase.from("bot_configs").select("*").eq("user_id", userId).single(),
     supabase.from("bot_states").select("*").eq("user_id", userId).single(),
     supabase
@@ -26,6 +30,13 @@ export async function GET(request: NextRequest) {
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(20),
+    // 当月のクローズ済み注文からP&L集計
+    supabase
+      .from("auto_trade_orders")
+      .select("pnl")
+      .eq("user_id", userId)
+      .gte("closed_at", monthStart)
+      .not("pnl", "is", null),
   ]);
 
   if (configRes.error) {
@@ -35,11 +46,17 @@ export async function GET(request: NextRequest) {
     console.error("[bot/config GET] state error:", stateRes.error.message, stateRes.error.code);
   }
 
+  // 当月損益を集計
+  const monthlyPnl = (monthlyOrdersRes.data || []).reduce(
+    (sum: number, o: { pnl: number | null }) => sum + (o.pnl || 0), 0
+  );
+
   return NextResponse.json(
     {
       config: configRes.data,
       state: stateRes.data,
       recentOrders: ordersRes.data || [],
+      monthlyPnl: Math.round(monthlyPnl),
     },
     {
       headers: {
