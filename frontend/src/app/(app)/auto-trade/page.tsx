@@ -767,14 +767,27 @@ export default function AutoTradePage() {
 
     const intervalMin = config.analysis_interval_min;
 
-    // Check trading hours (JST) — supports overnight (e.g., start=8, end=26 means 8:00~翌2:00)
-    const shouldAnalyze = () => {
+    // Check trading hours (JST) — supports overnight (e.g., start=8, end=30 means 8:00~翌6:00)
+    // Returns: "active" | "before_start" | "after_end"
+    const checkTradingHours = (): "active" | "before_start" | "after_end" => {
       const jstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
-      let hour = jstNow.getUTCHours();
-      if (config.trade_end_hour > 24 && hour < config.trade_start_hour) {
-        hour += 24;
+      const hour = jstNow.getUTCHours();
+      const startH = config.trade_start_hour;
+      const endH = config.trade_end_hour;
+
+      if (endH <= 24) {
+        // 日中パターン (例: start=8, end=15)
+        if (hour < startH) return "before_start";
+        if (hour >= endH) return "after_end";
+        return "active";
+      } else {
+        // 深夜またぎパターン (例: start=8, end=30=翌6時)
+        const endNormalized = endH - 24; // 翌日の終了時刻 (例: 6)
+        if (hour >= startH) return "active";           // 8~23時 → 取引中
+        if (hour < endNormalized) return "active";     // 0~5時 → 取引中（翌日部分）
+        // endNormalized(6時) ~ startH(8時) の間
+        return "before_start";
       }
-      return hour >= config.trade_start_hour && hour < config.trade_end_hour;
     };
 
     // Calculate ms until next candle close + 5s buffer (e.g., 21:05:05, 21:10:05...)
@@ -803,7 +816,8 @@ export default function AutoTradePage() {
           scheduleNext();
           return;
         }
-        if (shouldAnalyze()) {
+        const status = checkTradingHours();
+        if (status === "active") {
           analyzeRunningRef.current = true;
           try {
             await runAnalysis();
@@ -811,10 +825,14 @@ export default function AutoTradePage() {
             analyzeRunningRef.current = false;
           }
           scheduleNext();
+        } else if (status === "before_start") {
+          // 取引開始前 → 停止せず次のキャンドルまで待機
+          addLocalLog("SYSTEM", "INFO", `取引開始時間（${config.trade_start_hour}:00 JST）前のため待機中...`);
+          scheduleNext();
         } else {
-          // Trading hours ended → auto-stop bot (only update is_active)
+          // after_end → 取引終了 → auto-stop bot
           addLocalLog("SYSTEM", "WARN", `取引終了時間（${config.trade_end_hour > 24 ? `翌${config.trade_end_hour - 24}` : config.trade_end_hour}:00 JST）に到達したためBotを自動停止しました`);
-          setConfig({ ...config, is_active: false });
+          setConfig((prev) => ({ ...prev, is_active: false }));
           if (userId) {
             fetch("/api/bot/config", {
               method: "PUT",
