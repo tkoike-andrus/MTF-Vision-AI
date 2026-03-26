@@ -129,8 +129,9 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // 距離計算
-  const { minPips, nearest } = calcMinDistancePips(currentPrice, zones, pipSize);
+  // 距離計算（ブレイク済みゾーンは除外 — 有効なS/Rのみで判定）
+  const activeZones = zones.filter((z) => !z.broken);
+  const { minPips, nearest } = calcMinDistancePips(currentPrice, activeZones.length > 0 ? activeZones : zones, pipSize);
 
   // クールダウン判定
   let cooldownRemainingSec = 0;

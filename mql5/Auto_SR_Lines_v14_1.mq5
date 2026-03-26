@@ -3,7 +3,7 @@
 //|                               Copyright 2026, IT Consultant & AI |
 //+------------------------------------------------------------------+
 #property copyright "IT Consultant & AI"
-#property version   "14.04"
+#property version   "14.06"
 #property indicator_chart_window
 #property indicator_plots 0
 //--- 入力パラメータ
@@ -25,6 +25,13 @@ double g_sellZoneHigh = 0, g_sellZoneLow = 0;
 double g_buyZoneHigh  = 0, g_buyZoneLow  = 0;
 bool   g_hasResZone   = false, g_hasSupZone  = false;
 bool   g_hasSellZone  = false, g_hasBuyZone  = false;
+//--- 初回スキャン済みフラグ（チャート再起動時のブレイク済みゾーン復元用）
+bool   g_initialScanDone = false;
+//--- ブレイク済みゾーン連番カウンタ
+int    g_brokenSellCount = 0;
+int    g_brokenBuyCount  = 0;
+int    g_brokenResCount  = 0;
+int    g_brokenSupCount  = 0;
 //+------------------------------------------------------------------+
 int OnInit()
 {
@@ -32,6 +39,9 @@ int OnInit()
    g_lastBarTime   = 0;
    g_hasResZone = false; g_hasSupZone = false;
    g_hasSellZone = false; g_hasBuyZone = false;
+   g_initialScanDone = false;
+   g_brokenSellCount = 0; g_brokenBuyCount = 0;
+   g_brokenResCount = 0; g_brokenSupCount = 0;
    ObjectsDeleteAll(0, "AutoRes_");
    ObjectsDeleteAll(0, "AutoSup_");
    ObjectsDeleteAll(0, "Orange_");
@@ -95,6 +105,36 @@ void ConvertToBroken(string srcZone, string srcLabel,
    CreatePriceLabel(brkLabel, mid, above ? zHigh : zLow, InpBrokenColor, above);
 }
 //+------------------------------------------------------------------+
+//| 過去データでブレイク済みかチェック（チャート再起動対応）             |
+//|   zoneBarIndex: ゾーンが形成されたバーのインデックス                |
+//|   zonePrice: ブレイク判定の基準価格（上方=zHigh, 下方=zLow）       |
+//|   isAbove: true=上方ブレイク(close>zonePrice), false=下方ブレイク  |
+//+------------------------------------------------------------------+
+bool IsAlreadyBroken(int zoneBarIndex, double zonePrice, bool isAbove,
+                     const double &closeArr[], int total)
+{
+   int startIdx = 1;
+   int endIdx = MathMin(zoneBarIndex - 1, total - 1);
+   for(int i = startIdx; i <= endIdx; i++) {
+      if(isAbove && closeArr[i] > zonePrice) return true;
+      if(!isAbove && closeArr[i] < zonePrice) return true;
+   }
+   return false;
+}
+//+------------------------------------------------------------------+
+//| ブレイク済みゾーンを直接SlateGrayで作成（連番対応）                 |
+//+------------------------------------------------------------------+
+void CreateBrokenDirect(string prefix, int &counter, datetime t1,
+                        double zHigh, double zLow, bool above)
+{
+   counter++;
+   string zoneName  = prefix + "_" + IntegerToString(counter);
+   string labelName = "PriceLabel_" + prefix + "_" + IntegerToString(counter);
+   CreateZone(zoneName, t1, zHigh, zLow, InpBrokenColor);
+   double mid = (zHigh + zLow) / 2.0;
+   CreatePriceLabel(labelName, mid, above ? zHigh : zLow, InpBrokenColor, above);
+}
+//+------------------------------------------------------------------+
 //| メイン計算                                                        |
 //+------------------------------------------------------------------+
 int OnCalculate(const int rates_total, const int prev_calculated,
@@ -135,7 +175,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    }
 
    // =================================================================
-   // ブレイク判定（バー確定時のみ）
+   // リアルタイムブレイク判定（バー確定時のみ）
    // =================================================================
    if(isNewBar)
    {
@@ -179,72 +219,79 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // 統合ピボット検出（サンドイッチ構造）
    //   上方: 1番目 → オレンジ売り, 2番目 → 黄緑（抵抗帯）
    //   下方: 1番目 → オレンジ買い, 2番目 → ピンク（支持帯）
+   //   ★ ブレイク済みピボットはSlateGrayで直接作成し、カウントしない
    // =================================================================
    double current_price = close[0];
 
    // --- 上方ピボット検出 ---
    if(!g_hasSellZone || !g_hasResZone)
    {
-      int foundAbove = 0;
+      int foundAbove = 0;   // 非ブレイクのピボットカウント
       for(int i = InpSensitivity; i < rates_total - InpSensitivity; i++)
       {
          if(foundAbove >= 2) break;
+         if(g_hasSellZone && g_hasResZone) break;
+
          bool isPivotHigh = true;
          for(int k = 1; k <= InpSensitivity; k++)
             if(high[i-k] > high[i] || high[i+k] > high[i]) { isPivotHigh = false; break; }
          if(!isPivotHigh) continue;
-         if(high[i] <= current_price) continue;  // 現在価格より上のみ
+         if(high[i] <= current_price) continue;
 
-         // ブレイク済みと同一価格ならスキップ
-         if(foundAbove == 0 && ObjectFind(0, "Broken_Orange_Sell") >= 0) {
-            double bH = ObjectGetDouble(0, "Broken_Orange_Sell", OBJPROP_PRICE, 0);
-            if(MathAbs(high[i] - bH) < _Point * 10) continue;
-         }
-         if(foundAbove == 1 && ObjectFind(0, "Broken_Res") >= 0) {
-            double bH = ObjectGetDouble(0, "Broken_Res", OBJPROP_PRICE, 0);
-            if(MathAbs(high[i] - bH) < _Point * 10) continue;
+         // --- ゾーン価格を先に計算 ---
+         double zHigh = high[i];
+         double pipsFactor = _Point * 10;
+         double maxW = InpZoneMaxPips * pipsFactor;
+         double zLow_orange = MathMax(MathMax(open[i], close[i]), zHigh - maxW);
+         double zLow_green  = MathMax(open[i], close[i]);
+
+         // --- ★ ブレイク済みチェック（作成前に判定）---
+         bool alreadyBroken = IsAlreadyBroken(i, zHigh, true, close, rates_total);
+
+         if(alreadyBroken) {
+            // ブレイク済み → SlateGrayとして直接描画、foundAboveカウントしない
+            if(_Period == PERIOD_H1 && !g_hasSellZone) {
+               // オレンジ候補だったがブレイク済み
+               CreateBrokenDirect("Broken_Orange_Sell", g_brokenSellCount,
+                                  time[i], zHigh, zLow_orange, true);
+            } else if(g_hasSellZone && !g_hasResZone) {
+               // 黄緑候補だったがブレイク済み
+               CreateBrokenDirect("Broken_Res", g_brokenResCount,
+                                  time[i], zHigh, zLow_green, true);
+            }
+            continue;  // カウントせずスキップ
          }
 
+         // --- ブレイクされていない有効なピボット ---
          foundAbove++;
          if(foundAbove == 1 && !g_hasSellZone && _Period == PERIOD_H1)
          {
-            // 1番目 → オレンジ売り（H1のみ、H1バー確定時のみ更新）
+            // 1番目 → オレンジ売り
             if(isNewH1Bar || !g_hasSellZone) {
-               double zHigh = high[i];
-               double pipsFactor = _Point * 10;
-               double maxW = InpZoneMaxPips * pipsFactor;
-               double zLow = MathMax(MathMax(open[i], close[i]), zHigh - maxW);
                ObjectDelete(0, "Orange_Sell");
                ObjectDelete(0, "PriceLabel_Orange_Sell");
-               CreateZone("Orange_Sell", time[i], zHigh, zLow, InpOrangeColor);
-               double mid = (zHigh + zLow) / 2.0;
+               CreateZone("Orange_Sell", time[i], zHigh, zLow_orange, InpOrangeColor);
+               double mid = (zHigh + zLow_orange) / 2.0;
                CreatePriceLabel("PriceLabel_Orange_Sell", mid, zHigh, InpOrangeColor, true);
-               g_sellZoneHigh = zHigh; g_sellZoneLow = zLow;
+               g_sellZoneHigh = zHigh; g_sellZoneLow = zLow_orange;
                g_hasSellZone = true;
-               ObjectDelete(0, "Broken_Orange_Sell");
-               ObjectDelete(0, "PriceLabel_Broken_Orange_Sell");
             }
          }
          else if(foundAbove == 1 && (g_hasSellZone || _Period != PERIOD_H1))
          {
-            // オレンジ既存 or H1以外 → この1番目は黄緑にカウントアップ
             foundAbove++;
          }
 
          if(foundAbove == 2 && !g_hasResZone)
          {
             // 2番目 → 黄緑（抵抗帯）
-            double resHigh = high[i];
-            double resLow  = MathMax(open[i], close[i]);
             ObjectDelete(0, "AutoRes_Zone");
             ObjectDelete(0, "PriceLabel_Res");
-            CreateZone("AutoRes_Zone", time[i], resHigh, resLow, InpResColor);
-            double resMid = (resHigh + resLow) / 2.0;
-            CreatePriceLabel("PriceLabel_Res", resMid, resHigh, InpResColor, true);
-            g_resZoneHigh = resHigh; g_resZoneLow = resLow;
+            CreateZone("AutoRes_Zone", time[i], zHigh, zLow_green, InpResColor);
+            double resMid = (zHigh + zLow_green) / 2.0;
+            CreatePriceLabel("PriceLabel_Res", resMid, zHigh, InpResColor, true);
+            g_resZoneHigh = zHigh; g_resZoneLow = zLow_green;
             g_hasResZone = true;
-            ObjectDelete(0, "Broken_Res");
-            ObjectDelete(0, "PriceLabel_Broken_Res");
          }
       }
    }
@@ -256,39 +303,47 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       for(int i = InpSensitivity; i < rates_total - InpSensitivity; i++)
       {
          if(foundBelow >= 2) break;
+         if(g_hasBuyZone && g_hasSupZone) break;
+
          bool isPivotLow = true;
          for(int k = 1; k <= InpSensitivity; k++)
             if(low[i-k] < low[i] || low[i+k] < low[i]) { isPivotLow = false; break; }
          if(!isPivotLow) continue;
-         if(low[i] >= current_price) continue;  // 現在価格より下のみ
+         if(low[i] >= current_price) continue;
 
-         // ブレイク済みと同一価格ならスキップ
-         if(foundBelow == 0 && ObjectFind(0, "Broken_Orange_Buy") >= 0) {
-            double bL = ObjectGetDouble(0, "Broken_Orange_Buy", OBJPROP_PRICE, 1);
-            if(MathAbs(low[i] - bL) < _Point * 10) continue;
-         }
-         if(foundBelow == 1 && ObjectFind(0, "Broken_Sup") >= 0) {
-            double bL = ObjectGetDouble(0, "Broken_Sup", OBJPROP_PRICE, 1);
-            if(MathAbs(low[i] - bL) < _Point * 10) continue;
+         // --- ゾーン価格を先に計算 ---
+         double zLow = low[i];
+         double pipsFactor = _Point * 10;
+         double maxW = InpZoneMaxPips * pipsFactor;
+         double zHigh_orange = MathMin(MathMin(open[i], close[i]), zLow + maxW);
+         double zHigh_pink   = MathMin(open[i], close[i]);
+
+         // --- ★ ブレイク済みチェック（作成前に判定）---
+         bool alreadyBroken = IsAlreadyBroken(i, zLow, false, close, rates_total);
+
+         if(alreadyBroken) {
+            if(_Period == PERIOD_H1 && !g_hasBuyZone) {
+               CreateBrokenDirect("Broken_Orange_Buy", g_brokenBuyCount,
+                                  time[i], zHigh_orange, zLow, false);
+            } else if(g_hasBuyZone && !g_hasSupZone) {
+               CreateBrokenDirect("Broken_Sup", g_brokenSupCount,
+                                  time[i], zHigh_pink, zLow, false);
+            }
+            continue;
          }
 
+         // --- ブレイクされていない有効なピボット ---
          foundBelow++;
          if(foundBelow == 1 && !g_hasBuyZone && _Period == PERIOD_H1)
          {
             if(isNewH1Bar || !g_hasBuyZone) {
-               double zLow = low[i];
-               double pipsFactor = _Point * 10;
-               double maxW = InpZoneMaxPips * pipsFactor;
-               double zHigh = MathMin(MathMin(open[i], close[i]), zLow + maxW);
                ObjectDelete(0, "Orange_Buy");
                ObjectDelete(0, "PriceLabel_Orange_Buy");
-               CreateZone("Orange_Buy", time[i], zHigh, zLow, InpOrangeColor);
-               double mid = (zHigh + zLow) / 2.0;
+               CreateZone("Orange_Buy", time[i], zHigh_orange, zLow, InpOrangeColor);
+               double mid = (zHigh_orange + zLow) / 2.0;
                CreatePriceLabel("PriceLabel_Orange_Buy", mid, zLow, InpOrangeColor, false);
-               g_buyZoneHigh = zHigh; g_buyZoneLow = zLow;
+               g_buyZoneHigh = zHigh_orange; g_buyZoneLow = zLow;
                g_hasBuyZone = true;
-               ObjectDelete(0, "Broken_Orange_Buy");
-               ObjectDelete(0, "PriceLabel_Broken_Orange_Buy");
             }
          }
          else if(foundBelow == 1 && (g_hasBuyZone || _Period != PERIOD_H1))
@@ -298,18 +353,66 @@ int OnCalculate(const int rates_total, const int prev_calculated,
 
          if(foundBelow == 2 && !g_hasSupZone)
          {
-            double supHigh = MathMin(open[i], close[i]);
-            double supLow  = low[i];
             ObjectDelete(0, "AutoSup_Zone");
             ObjectDelete(0, "PriceLabel_Sup");
-            CreateZone("AutoSup_Zone", time[i], supLow, supHigh, InpSupColor);
-            double supMid = (supHigh + supLow) / 2.0;
-            CreatePriceLabel("PriceLabel_Sup", supMid, supLow, InpSupColor, false);
-            g_supZoneHigh = supHigh; g_supZoneLow = supLow;
+            CreateZone("AutoSup_Zone", time[i], zLow, zHigh_pink, InpSupColor);
+            double supMid = (zHigh_pink + zLow) / 2.0;
+            CreatePriceLabel("PriceLabel_Sup", supMid, zLow, InpSupColor, false);
+            g_supZoneHigh = zHigh_pink; g_supZoneLow = zLow;
             g_hasSupZone = true;
-            ObjectDelete(0, "Broken_Sup");
-            ObjectDelete(0, "PriceLabel_Broken_Sup");
          }
+      }
+   }
+
+   // =================================================================
+   // ブレイク済みゾーン復元（チャート再起動・価格超え対応）
+   //   価格がピボットを超えた場合、そのピボットは上方/下方スキャンの
+   //   対象外になる。初回のみ別途スキャンしてSlateGrayで描画する。
+   // =================================================================
+   if(!g_initialScanDone && _Period == PERIOD_H1)
+   {
+      g_initialScanDone = true;
+      int maxScan = MathMin(rates_total - InpSensitivity, 500);
+
+      // --- 上方ブレイク済み: 現在価格以下のピボットハイ（価格に超えられた売りゾーン）---
+      for(int i = InpSensitivity; i < maxScan; i++)
+      {
+         bool isPH = true;
+         for(int k = 1; k <= InpSensitivity; k++)
+            if(high[i-k] > high[i] || high[i+k] > high[i]) { isPH = false; break; }
+         if(!isPH) continue;
+         if(high[i] >= current_price) continue;  // まだ上方にある → メインロジックで処理済み
+
+         // 既存ゾーンと重複するピボットはスキップ
+         if(g_hasSellZone && MathAbs(high[i] - g_sellZoneHigh) < _Point * 10) continue;
+         if(g_hasResZone  && MathAbs(high[i] - g_resZoneHigh)  < _Point * 10) continue;
+         if(g_hasSupZone  && high[i] <= g_supZoneLow) continue;  // サポート以下は対象外
+
+         double zHigh = high[i];
+         double maxW  = InpZoneMaxPips * _Point * 10;
+         double zLow  = MathMax(MathMax(open[i], close[i]), zHigh - maxW);
+         CreateBrokenDirect("Broken_Orange_Sell", g_brokenSellCount, time[i], zHigh, zLow, true);
+         break;  // 最も近い1つのみ
+      }
+
+      // --- 下方ブレイク済み: 現在価格以上のピボットロー（価格に超えられた買いゾーン）---
+      for(int i = InpSensitivity; i < maxScan; i++)
+      {
+         bool isPL = true;
+         for(int k = 1; k <= InpSensitivity; k++)
+            if(low[i-k] < low[i] || low[i+k] < low[i]) { isPL = false; break; }
+         if(!isPL) continue;
+         if(low[i] <= current_price) continue;  // まだ下方にある → メインロジックで処理済み
+
+         if(g_hasBuyZone && MathAbs(low[i] - g_buyZoneLow)  < _Point * 10) continue;
+         if(g_hasSupZone && MathAbs(low[i] - g_supZoneLow)  < _Point * 10) continue;
+         if(g_hasResZone && low[i] >= g_resZoneHigh) continue;  // レジスタンス以上は対象外
+
+         double zLow  = low[i];
+         double maxW  = InpZoneMaxPips * _Point * 10;
+         double zHigh = MathMin(MathMin(open[i], close[i]), zLow + maxW);
+         CreateBrokenDirect("Broken_Orange_Buy", g_brokenBuyCount, time[i], zHigh, zLow, false);
+         break;  // 最も近い1つのみ
       }
    }
 
@@ -349,46 +452,66 @@ void WriteSRLevelsJSON()
 
    bool first = true;
 
-   // 黄緑（抵抗帯）
-   if(g_hasResZone) {
-      if(!first) json += ",\n";
-      json += "    {\"type\":\"resistance\",\"color\":\"green\",\"high\":" + DoubleToString(g_resZoneHigh, _Digits)
-            + ",\"low\":" + DoubleToString(g_resZoneLow, _Digits) + ",\"broken\":false}";
-      first = false;
-   }
-   // ピンク（支持帯）
-   if(g_hasSupZone) {
-      if(!first) json += ",\n";
-      json += "    {\"type\":\"support\",\"color\":\"pink\",\"high\":" + DoubleToString(g_supZoneHigh, _Digits)
-            + ",\"low\":" + DoubleToString(g_supZoneLow, _Digits) + ",\"broken\":false}";
-      first = false;
-   }
-   // オレンジ売り
-   if(g_hasSellZone) {
-      if(!first) json += ",\n";
-      json += "    {\"type\":\"orange_sell\",\"color\":\"orange\",\"high\":" + DoubleToString(g_sellZoneHigh, _Digits)
-            + ",\"low\":" + DoubleToString(g_sellZoneLow, _Digits) + ",\"broken\":false}";
-      first = false;
-   }
-   // オレンジ買い
-   if(g_hasBuyZone) {
-      if(!first) json += ",\n";
-      json += "    {\"type\":\"orange_buy\",\"color\":\"orange\",\"high\":" + DoubleToString(g_buyZoneHigh, _Digits)
-            + ",\"low\":" + DoubleToString(g_buyZoneLow, _Digits) + ",\"broken\":false}";
-      first = false;
-   }
-   // ブレイク済みゾーン（チャートオブジェクトから取得）
-   string brokenNames[] = {"Broken_Res", "Broken_Sup", "Broken_Orange_Sell", "Broken_Orange_Buy"};
-   string brokenTypes[] = {"broken_res", "broken_sup", "broken_orange_sell", "broken_orange_buy"};
-   for(int b = 0; b < 4; b++) {
-      if(ObjectFind(0, brokenNames[b]) >= 0) {
-         double bHigh = ObjectGetDouble(0, brokenNames[b], OBJPROP_PRICE, 0);
-         double bLow  = ObjectGetDouble(0, brokenNames[b], OBJPROP_PRICE, 1);
-         if(bHigh > 0 && bLow > 0) {
+   // =================================================================
+   // オブジェクト直接スキャン方式（フラグ不一致問題を根本解決）
+   // =================================================================
+
+   // --- アクティブゾーン: チャートオブジェクトの存在で判定 ---
+   string activeNames[]  = {"AutoRes_Zone",  "AutoSup_Zone", "Orange_Sell",  "Orange_Buy"};
+   string activeTypes[]  = {"resistance",    "support",      "orange_sell",  "orange_buy"};
+   string activeColors[] = {"green",         "pink",         "orange",       "orange"};
+   for(int a = 0; a < 4; a++) {
+      if(ObjectFind(0, activeNames[a]) >= 0) {
+         double p0 = ObjectGetDouble(0, activeNames[a], OBJPROP_PRICE, 0);
+         double p1 = ObjectGetDouble(0, activeNames[a], OBJPROP_PRICE, 1);
+         if(p0 > 0 && p1 > 0) {
+            double zH = MathMax(p0, p1);
+            double zL = MathMin(p0, p1);
             if(!first) json += ",\n";
-            json += "    {\"type\":\"" + brokenTypes[b] + "\",\"color\":\"slategray\",\"high\":"
-                  + DoubleToString(bHigh, _Digits) + ",\"low\":" + DoubleToString(bLow, _Digits) + ",\"broken\":true}";
+            json += "    {\"type\":\"" + activeTypes[a] + "\",\"color\":\"" + activeColors[a]
+                  + "\",\"high\":" + DoubleToString(zH, _Digits)
+                  + ",\"low\":" + DoubleToString(zL, _Digits) + ",\"broken\":false}";
             first = false;
+         }
+      }
+   }
+
+   // --- ブレイク済みゾーン: リアルタイム変換分（固定名）---
+   string rtNames[] = {"Broken_Orange_Sell", "Broken_Orange_Buy", "Broken_Res", "Broken_Sup"};
+   string rtTypes[] = {"broken_orange_sell", "broken_orange_buy", "broken_res", "broken_sup"};
+   for(int b = 0; b < 4; b++) {
+      if(ObjectFind(0, rtNames[b]) >= 0) {
+         double p0 = ObjectGetDouble(0, rtNames[b], OBJPROP_PRICE, 0);
+         double p1 = ObjectGetDouble(0, rtNames[b], OBJPROP_PRICE, 1);
+         if(p0 > 0 && p1 > 0) {
+            double zH = MathMax(p0, p1);
+            double zL = MathMin(p0, p1);
+            if(!first) json += ",\n";
+            json += "    {\"type\":\"" + rtTypes[b] + "\",\"color\":\"slategray\",\"high\":"
+                  + DoubleToString(zH, _Digits) + ",\"low\":" + DoubleToString(zL, _Digits) + ",\"broken\":true}";
+            first = false;
+         }
+      }
+   }
+
+   // --- ブレイク済みゾーン: 連番分（CreateBrokenDirect）---
+   string seqPrefixes[] = {"Broken_Orange_Sell", "Broken_Orange_Buy", "Broken_Res", "Broken_Sup"};
+   string seqTypes[]    = {"broken_orange_sell", "broken_orange_buy", "broken_res", "broken_sup"};
+   int    seqCounts[]   = {g_brokenSellCount, g_brokenBuyCount, g_brokenResCount, g_brokenSupCount};
+   for(int p = 0; p < 4; p++) {
+      for(int n = 1; n <= seqCounts[p]; n++) {
+         string objName = seqPrefixes[p] + "_" + IntegerToString(n);
+         if(ObjectFind(0, objName) >= 0) {
+            double p0 = ObjectGetDouble(0, objName, OBJPROP_PRICE, 0);
+            double p1 = ObjectGetDouble(0, objName, OBJPROP_PRICE, 1);
+            if(p0 > 0 && p1 > 0) {
+               double zH = MathMax(p0, p1);
+               double zL = MathMin(p0, p1);
+               if(!first) json += ",\n";
+               json += "    {\"type\":\"" + seqTypes[p] + "\",\"color\":\"slategray\",\"high\":"
+                     + DoubleToString(zH, _Digits) + ",\"low\":" + DoubleToString(zL, _Digits) + ",\"broken\":true}";
+               first = false;
+            }
          }
       }
    }
