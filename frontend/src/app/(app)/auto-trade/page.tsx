@@ -72,7 +72,6 @@ interface BotConfig {
   x_big_trade_threshold: number;
   // Phase settings (API cost optimization)
   phase_battle_pips: number;
-  phase_battle_interval_min: number;
   post_trade_cooldown_min: number;
 }
 
@@ -304,7 +303,6 @@ const DEFAULT_CONFIG: BotConfig = {
   x_tweet_preset: "casual",
   x_big_trade_threshold: 10000,
   phase_battle_pips: 12,
-  phase_battle_interval_min: 5,
   post_trade_cooldown_min: 5,
 };
 
@@ -522,7 +520,6 @@ export default function AutoTradePage() {
         x_tweet_preset: config.x_tweet_preset,
         x_big_trade_threshold: config.x_big_trade_threshold,
         phase_battle_pips: config.phase_battle_pips,
-        phase_battle_interval_min: config.phase_battle_interval_min,
         post_trade_cooldown_min: config.post_trade_cooldown_min,
       };
       console.log("[SaveConfig] payload x_tweet_prompt length:", config.x_tweet_prompt?.length, "x_tweet_prompt_drama length:", config.x_tweet_prompt_drama?.length);
@@ -1767,17 +1764,6 @@ export default function AutoTradePage() {
                 <p className={`text-[10px] mt-0.5 ${isDarkMode ? "text-gray-600" : "text-gray-400"}`}>
                   ≤{config.phase_battle_pips}pips→戦闘 / &gt;{config.phase_battle_pips}pips→待機
                 </p>
-              </div>
-              <div>
-                <label className={`text-[10px] block mb-1 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                  Phase C (戦闘) 分析間隔 (分)
-                </label>
-                <input
-                  type="number" min={1} max={60} step={1}
-                  value={config.phase_battle_interval_min || ""}
-                  onChange={(e) => setConfig({ ...config, phase_battle_interval_min: Number(e.target.value) || 5 })}
-                  className={`${inputCls} font-mono text-xs w-full`}
-                />
               </div>
               <div>
                 <label className={`text-[10px] block mb-1 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
