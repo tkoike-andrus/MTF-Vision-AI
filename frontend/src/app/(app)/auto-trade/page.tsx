@@ -827,10 +827,10 @@ export default function AutoTradePage() {
     };
 
     // Phase-check: lightweight distance check (no Gemini)
-    const checkPhase = async (): Promise<"BATTLE" | "STANDBY" | "COOLDOWN" | "ENVIRONMENT"> => {
+    const checkPhase = async (): Promise<{ phase: "BATTLE" | "STANDBY" | "COOLDOWN" | "ENVIRONMENT"; distance: number | null }> => {
       // H1 bar close = minute 0 → environment recognition
       const now = new Date();
-      if (now.getMinutes() < 1) return "ENVIRONMENT";
+      if (now.getMinutes() < 1) return { phase: "ENVIRONMENT", distance: null };
 
       try {
         const res = await fetch(`/api/bot/phase-check?user_id=${userId}`, { cache: "no-store" });
@@ -838,9 +838,9 @@ export default function AutoTradePage() {
         setCurrentPhase(data.phase);
         setPhaseReason(data.reason || "");
         setSrDistancePips(data.min_distance_pips ?? null);
-        return data.phase || "BATTLE";
+        return { phase: data.phase || "BATTLE", distance: data.min_distance_pips ?? null };
       } catch {
-        return "BATTLE"; // Fail-open: call Gemini on error
+        return { phase: "BATTLE", distance: null }; // Fail-open: call Gemini on error
       }
     };
 
@@ -859,15 +859,15 @@ export default function AutoTradePage() {
         if (status === "active") {
           analyzeRunningRef.current = true;
           try {
-            const phase = await checkPhase();
+            const { phase, distance } = await checkPhase();
             if (phase === "ENVIRONMENT") {
               addLocalLog("SYSTEM", "INFO", "🔭 環境認識フェーズ (H1確定) → Gemini分析実行");
               await runAnalysis({ phase_a: true });
             } else if (phase === "BATTLE") {
-              addLocalLog("SYSTEM", "INFO", "⚔️ 戦闘モード → Gemini分析実行");
+              addLocalLog("SYSTEM", "INFO", `⚔️ 戦闘モード → Gemini分析実行 (最寄りSR: ${distance?.toFixed(1) ?? "?"}pips)`);
               await runAnalysis();
             } else if (phase === "STANDBY") {
-              addLocalLog("SYSTEM", "INFO", `💤 待機モード → Geminiスキップ (最寄りSR: ${srDistancePips?.toFixed(1) ?? "?"}pips)`);
+              addLocalLog("SYSTEM", "INFO", `💤 待機モード → Geminiスキップ (最寄りSR: ${distance?.toFixed(1) ?? "?"}pips)`);
             } else if (phase === "COOLDOWN") {
               addLocalLog("SYSTEM", "INFO", "⏸️ クールダウン中 → Geminiスキップ");
             }
