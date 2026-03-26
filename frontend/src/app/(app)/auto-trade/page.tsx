@@ -1753,7 +1753,7 @@ export default function AutoTradePage() {
               </div>
               <div>
                 <label className={`text-[10px] block mb-1 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                  B→C 切り替え距離 (pips)
+                  GeminiAPI実行条件 (pips)
                 </label>
                 <input
                   type="number" min={1} max={50} step={1}
@@ -1762,7 +1762,7 @@ export default function AutoTradePage() {
                   className={`${inputCls} font-mono text-xs w-full`}
                 />
                 <p className={`text-[10px] mt-0.5 ${isDarkMode ? "text-gray-600" : "text-gray-400"}`}>
-                  ≤{config.phase_battle_pips}pips→戦闘 / &gt;{config.phase_battle_pips}pips→待機
+                  ライン±{config.phase_battle_pips}pips以内で実行 / 超過時はスキップ
                 </p>
               </div>
               <div>
